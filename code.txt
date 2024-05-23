@@ -1,0 +1,111 @@
+// Include the necessary libraries
+#include "ThingSpeak.h"      // Library for interacting with ThingSpeak
+#include <ESP8266WiFi.h>     // Library for ESP8266 WiFi connectivity
+#include <Servo.h>           // Library for controlling servo motors
+
+// Pin definitions
+const int trigPin = D1;      // Pin for the ultrasonic sensor's trigger
+const int echoPin = D2;      // Pin for the ultrasonic sensor's echo
+#define redled D3            // Pin for the red LED
+#define greenled D4          // Pin for the green LED
+
+// WiFi and ThingSpeak configuration
+unsigned long ch_no = 2558059;   // Your ThingSpeak channel number
+const char *write_api = "FT69WJPNLT8L7KIX";  // Your ThingSpeak write API key
+char ssid[] = "Ahmed Behiry";    // Your WiFi network SSID
+char pass[] = "AMB1552002";      // Your WiFi network password
+
+// Timing variables
+unsigned long startMillis;       // Start time for the periodic data upload
+unsigned long currentMillis;     // Current time
+const unsigned long period = 10000;   // Period for data upload (10 seconds)
+
+// Servo and distance measurement
+WiFiClient client;               // WiFi client object
+long duration;                   // Duration of the ultrasonic pulse
+int distance;                    // Calculated distance
+Servo myServo;                    // Servo motor object
+
+void setup() {
+  // Initialize pins
+  pinMode(trigPin, OUTPUT);      // Set the trigger pin as output
+  pinMode(echoPin, INPUT);       // Set the echo pin as input
+  pinMode(redled, OUTPUT);       // Set the red LED pin as output
+  pinMode(greenled, OUTPUT);     // Set the green LED pin as output
+  digitalWrite(redled, LOW);     // Turn off the red LED
+  digitalWrite(greenled, LOW);   // Turn off the green LED
+
+  // Initialize serial communication
+  Serial.begin(9600);            // Start the serial communication
+
+  // Attach the servo
+  myServo.attach(D5);            // Attach the servo to pin D5
+
+  // Connect to WiFi
+  WiFi.begin(ssid, pass);        // Connect to the WiFi network
+  while (WiFi.status() != WL_CONNECTED) {   // Wait until connected
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi connected");
+  Serial.println(WiFi.localIP());  // Print the device's IP address
+  delay(2000);                   // Wait for 2 seconds
+
+  // Initialize ThingSpeak
+  ThingSpeak.begin(client);      // Initialize the ThingSpeak library
+
+  // Set initial start time
+  startMillis = millis();        // Set the initial start time
+}
+
+void loop() {
+  // Sweep the servo from 15 to 165 degrees and back
+  sweepServo();
+
+  // Check if it's time to send data to ThingSpeak
+  currentMillis = millis();      // Get the current time
+  if (currentMillis - startMillis >= period) {   // Check if the period has elapsed
+    ThingSpeak.setField(1, distance);  // Set the distance value in ThingSpeak
+    ThingSpeak.writeFields(ch_no, write_api);  // Write the data to ThingSpeak
+    startMillis = currentMillis;  // Update the start time
+  }
+}
+
+void sweepServo() {
+  // Move servo from 15 to 165 degrees
+  for (int i = 15; i <= 165; i++) {
+    myServo.write(i);            // Move the servo to the current angle
+    delay(10);                   // Delay to allow the servo to move
+    measureDistanceAndControlLED();  // Measure the distance and control the LEDs
+  }
+
+  // Move servo back from 165 to 15 degrees
+  for (int i = 165; i >= 15; i--) {
+    myServo.write(i);            // Move the servo to the current angle
+    delay(10);                   // Delay to allow the servo to move
+    measureDistanceAndControlLED();  // Measure the distance and control the LEDs
+  }
+}
+
+void measureDistanceAndControlLED() {
+  // Trigger the ultrasonic sensor
+  digitalWrite(trigPin, LOW);    // Set the trigger pin low
+  delayMicroseconds(2);          // Delay for 2 microseconds
+  digitalWrite(trigPin, HIGH);   // Set the trigger pin high
+  delayMicroseconds(10);         // Delay for 10 microseconds
+  digitalWrite(trigPin, LOW);    // Set the trigger pin low
+
+  // Read the echo pin and calculate distance
+  duration = pulseIn(echoPin, HIGH);  // Measure the duration of the echo pulse
+  distance = duration * 0.034 / 2;    // Calculate the distance in centimeters
+  Serial.println(distance);           // Print the distance to the serial monitor
+
+  // Control LEDs based on distance
+  if (distance <= 4) {           // If the distance is less than or equal to 4 cm
+    digitalWrite(redled, HIGH);  // Turn on the red LED
+    digitalWrite(greenled, LOW); // Turn off the green LED
+  } else {                       // If the distance is greater than 4 cm
+    digitalWrite(greenled, HIGH); // Turn on the green LED
+    digitalWrite(redled, LOW);   // Turn off the red LED
+  }
+}
